@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jianzhang.mapper.WarehouseRecordMapper">
+
+    <!-- 公共查询条件：单据类型、商品名称、时间区间（仅查未删除数据） -->
+    <sql id="whereCondition">
+        <where>
+            deleted = 0
+            <if test="q != null">
+                <if test="q.type != null">
+                    AND type = #{q.type}
+                </if>
+                <if test="q.keyword != null and q.keyword != ''">
+                    AND (goods_name LIKE CONCAT('%', #{q.keyword}, '%')
+                         OR remark LIKE CONCAT('%', #{q.keyword}, '%'))
+                </if>
+                <if test="q.startTime != null and q.startTime != ''">
+                    AND record_time &gt;= CONCAT(#{q.startTime}, ' 00:00:00')
+                </if>
+                <if test="q.endTime != null and q.endTime != ''">
+                    AND record_time &lt;= CONCAT(#{q.endTime}, ' 23:59:59')
+                </if>
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectPageList" resultType="com.jianzhang.entity.WarehouseRecord">
+        SELECT id, type, goods_name, goods_num, stock_remain, record_time, operator, remark, create_time
+        FROM warehouse_record
+        <include refid="whereCondition"/>
+        ORDER BY record_time DESC, id DESC
+    </select>
+
+    <select id="selectExportList" resultType="com.jianzhang.entity.WarehouseRecord">
+        SELECT id, type, goods_name, goods_num, stock_remain, record_time, operator, remark, create_time
+        FROM warehouse_record
+        <include refid="whereCondition"/>
+        ORDER BY record_time DESC, id DESC
+    </select>
+
+    <select id="selectSummary" resultType="java.util.LinkedHashMap">
+        SELECT IFNULL(SUM(CASE WHEN type = 1 THEN goods_num ELSE 0 END), 0) AS totalInNum,
+               IFNULL(SUM(CASE WHEN type = 2 THEN goods_num ELSE 0 END), 0) AS totalOutNum,
+               COUNT(DISTINCT goods_name) AS goodsKinds,
+               IFNULL(SUM(CASE WHEN type = 1 THEN goods_num ELSE -goods_num END), 0) AS totalStock
+        FROM warehouse_record
+        WHERE deleted = 0
+    </select>
+
+    <select id="selectMonthlyTrend" resultType="java.util.LinkedHashMap">
+        SELECT DATE_FORMAT(record_time, '%Y-%m') AS month,
+               IFNULL(SUM(CASE WHEN type = 1 THEN goods_num ELSE 0 END), 0) AS inNum,
+               IFNULL(SUM(CASE WHEN type = 2 THEN goods_num ELSE 0 END), 0) AS outNum
+        FROM warehouse_record
+        WHERE deleted = 0
+          AND record_time &gt;= DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL #{months} MONTH)
+        GROUP BY DATE_FORMAT(record_time, '%Y-%m')
+        ORDER BY month ASC
+    </select>
+
+    <!-- 库存台账：按商品汇总累计入库、累计出库、当前库存 -->
+    <select id="selectGoodsStock" resultType="com.jianzhang.vo.StockVO">
+        SELECT goods_name AS goodsName,
+               CAST(IFNULL(SUM(CASE WHEN type = 1 THEN goods_num ELSE 0 END), 0) AS SIGNED) AS inNum,
+               CAST(IFNULL(SUM(CASE WHEN type = 2 THEN goods_num ELSE 0 END), 0) AS SIGNED) AS outNum,
+               CAST(IFNULL(SUM(CASE WHEN type = 1 THEN goods_num ELSE -goods_num END), 0) AS SIGNED) AS stock,
+               DATE_FORMAT(MAX(record_time), '%Y-%m-%d %H:%i:%s') AS lastTime
+        FROM warehouse_record
+        <where>
+            deleted = 0
+            <if test="keyword != null and keyword != ''">
+                AND goods_name LIKE CONCAT('%', #{keyword}, '%')
+            </if>
+        </where>
+        GROUP BY goods_name
+        ORDER BY stock DESC, goods_name ASC
+    </select>
+
+    <select id="selectCurrentStock" resultType="java.lang.Integer">
+        SELECT CAST(IFNULL(SUM(CASE WHEN type = 1 THEN goods_num ELSE -goods_num END), 0) AS SIGNED)
+        FROM warehouse_record
+        WHERE deleted = 0 AND goods_name = #{goodsName}
+    </select>
+
+    <select id="selectGoodsNames" resultType="java.lang.String">
+        SELECT DISTINCT goods_name FROM warehouse_record WHERE deleted = 0 ORDER BY goods_name ASC
+    </select>
+
+    <!-- ==================== 回收站 ==================== -->
+
+    <select id="selectRecyclePage" resultType="com.jianzhang.entity.WarehouseRecord">
+        SELECT id, type, goods_name, goods_num, stock_remain, record_time, operator, remark, create_time, delete_time
+        FROM warehouse_record
+        WHERE deleted = 1
+        <if test="keyword != null and keyword != ''">
+            AND (goods_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR remark LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY delete_time DESC, id DESC
+    </select>
+
+    <update id="markDeleted">
+        UPDATE warehouse_record SET deleted = 1, delete_time = NOW() WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <update id="restoreById">
+        UPDATE warehouse_record SET deleted = 0, delete_time = NULL WHERE id = #{id} AND deleted = 1
+    </update>
+
+    <delete id="purgeById">
+        DELETE FROM warehouse_record WHERE id = #{id} AND deleted = 1
+    </delete>
+
+</mapper>

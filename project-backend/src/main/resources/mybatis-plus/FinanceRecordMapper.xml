@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jianzhang.mapper.FinanceRecordMapper">
+
+    <!-- 公共查询条件：类型、关键词（来源/备注）、时间区间（仅查未删除数据） -->
+    <sql id="whereCondition">
+        <where>
+            deleted = 0
+            <if test="q != null">
+                <if test="q.type != null">
+                    AND type = #{q.type}
+                </if>
+                <if test="q.keyword != null and q.keyword != ''">
+                    AND (source LIKE CONCAT('%', #{q.keyword}, '%')
+                         OR remark LIKE CONCAT('%', #{q.keyword}, '%'))
+                </if>
+                <if test="q.startTime != null and q.startTime != ''">
+                    AND record_time &gt;= CONCAT(#{q.startTime}, ' 00:00:00')
+                </if>
+                <if test="q.endTime != null and q.endTime != ''">
+                    AND record_time &lt;= CONCAT(#{q.endTime}, ' 23:59:59')
+                </if>
+                <if test="q.auditStatus != null">
+                    AND audit_status = #{q.auditStatus}
+                </if>
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectPageList" resultType="com.jianzhang.entity.FinanceRecord">
+        SELECT id, type, amount, source, record_time, remark, audit_status, audit_by, audit_time, audit_remark, create_time
+        FROM finance_record
+        <include refid="whereCondition"/>
+        ORDER BY record_time DESC, id DESC
+    </select>
+
+    <select id="selectExportList" resultType="com.jianzhang.entity.FinanceRecord">
+        SELECT id, type, amount, source, record_time, remark, audit_status, audit_by, audit_time, audit_remark, create_time
+        FROM finance_record
+        <include refid="whereCondition"/>
+        ORDER BY record_time DESC, id DESC
+    </select>
+
+    <select id="selectSummary" resultType="java.util.LinkedHashMap">
+        SELECT IFNULL(SUM(CASE WHEN type = 1 THEN amount ELSE 0 END), 0) AS totalIncome,
+               IFNULL(SUM(CASE WHEN type = 2 THEN amount ELSE 0 END), 0) AS totalExpense,
+               COUNT(1) AS recordCount
+        FROM finance_record
+        <include refid="whereCondition"/>
+          AND audit_status IN (0, 2)
+    </select>
+
+    <select id="selectMonthlyTrend" resultType="java.util.LinkedHashMap">
+        SELECT DATE_FORMAT(record_time, '%Y-%m') AS month,
+               IFNULL(SUM(CASE WHEN type = 1 THEN amount ELSE 0 END), 0) AS income,
+               IFNULL(SUM(CASE WHEN type = 2 THEN amount ELSE 0 END), 0) AS expense
+        FROM finance_record
+        WHERE deleted = 0
+          AND audit_status IN (0, 2)
+          AND record_time &gt;= DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL #{months} MONTH)
+        GROUP BY DATE_FORMAT(record_time, '%Y-%m')
+        ORDER BY month ASC
+    </select>
+
+    <select id="selectSourceSummary" resultType="java.util.LinkedHashMap">
+        SELECT source AS name, IFNULL(SUM(amount), 0) AS value
+        FROM finance_record
+        WHERE deleted = 0 AND audit_status IN (0, 2) AND type = #{type}
+        GROUP BY source
+        ORDER BY value DESC
+        LIMIT 6
+    </select>
+
+    <!-- ==================== 回收站 ==================== -->
+
+    <select id="selectRecyclePage" resultType="com.jianzhang.entity.FinanceRecord">
+        SELECT id, type, amount, source, record_time, remark, create_time, delete_time
+        FROM finance_record
+        WHERE deleted = 1
+        <if test="keyword != null and keyword != ''">
+            AND (source LIKE CONCAT('%', #{keyword}, '%')
+                 OR remark LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY delete_time DESC, id DESC
+    </select>
+
+    <update id="markDeleted">
+        UPDATE finance_record SET deleted = 1, delete_time = NOW() WHERE id = #{id} AND deleted = 0
+    </update>
+
+    <update id="restoreById">
+        UPDATE finance_record SET deleted = 0, delete_time = NULL WHERE id = #{id} AND deleted = 1
+    </update>
+
+    <delete id="purgeById">
+        DELETE FROM finance_record WHERE id = #{id} AND deleted = 1
+    </delete>
+
+</mapper>

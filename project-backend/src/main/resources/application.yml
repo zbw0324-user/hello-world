@@ -1,0 +1,68 @@
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+
+spring:
+  application:
+    name: jianzhang-cloud
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 支持通过环境变量覆盖，便于本地开发 / Docker / 云服务器多环境部署
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:jianzhang_cloud}?useUnicode=true&characterEncoding=utf8&serverTimezone=${DB_TIMEZONE:Asia/Shanghai}&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true&createDatabaseIfNotExist=false
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      connection-timeout: 30000
+      # 容器内 MySQL 启动较慢时自动重试连接
+      initialization-fail-timeout: -1
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: always
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 20MB
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    # 开发阶段可打开 SQL 日志便于调试
+    # log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+      table-underline: true
+  mapper-locations: classpath*:/mybatis-plus/**/*.xml
+  type-aliases-package: com.jianzhang.entity
+
+# 业务自定义配置
+business:
+  jwt:
+    # 生产环境请通过环境变量 JWT_SECRET 覆盖（长度不少于 32 位）
+    secret: ${JWT_SECRET:jianzhang-cloud-jwt-secret-key-2026-please-change-it-in-production}
+    # 令牌有效期（秒），默认 2 小时
+    expire: ${JWT_EXPIRE:7200}
+    header: Authorization
+    prefix: "Bearer "
+  cors:
+    # 允许跨域访问的前端地址，多个用英文逗号分隔
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:8088}
+
+logging:
+  level:
+    root: info
+    com.jianzhang: ${LOG_LEVEL:info}
+    com.jianzhang.mapper: ${LOG_LEVEL:info}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: ${LOG_FILE:logs/jianzhang-cloud.log}
